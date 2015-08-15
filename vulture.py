@@ -84,9 +84,10 @@ class vulture:
 			propID = ''
 			now = datetime.today()
 			for line in lines:
-				if propID != line.get('property_id')
+				if propID != line.get('property_id'):
 					propID = line.get('property_id')
 					w_file.write('%s,Refresh,Refresh,,1,1,%s,unavailable\n' % (propID, "9%s%s" % (now.month, now.day)))
+				
 				w_file.write("%s,%s,%s,%s,%s,%s,%s,%s\n" % (line.get('property_id', ''),
 						line.get('floorplan_name', ''),
 						line.get('unit_name', ''),
@@ -190,6 +191,7 @@ def main():
 	elif args.split:
 		pass
 	else:
+		
 		conglo = vulture(args)
 		conglo.masteri()
 		conglo.process()
