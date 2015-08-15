@@ -9,7 +9,7 @@ from math import floor
 unavailable = ['N/A', 'Month rent price is unavailable', '***NO UNITS FOUND***']
 
 class vulture:
-	def __init__(args):
+	def __init__(self, args):
 		self.input = []
 		self.infile = args.infile
 		self.yardi = {}
@@ -20,7 +20,7 @@ class vulture:
 		self.output = "/".join(dirs[:-3]) + "/Output Files/%s/%s" % (filename, dirs[-1])
 		if not os.path.exists(self.output):
 			os.makedirs(self.output)
-		database = [x for x in glob("/".join(dirs[:-3]) if "database" in x.lower()][0]
+		database = [x for x in glob("/".join(dirs[:-3])) if "database" in x.lower()][0]
 		with open(databse, 'r') as d_file:
 			for line in csv.DictReader(d_file, delimiter='\t'):
 				if not self.yardi.has_key(line['property_id']):
@@ -30,7 +30,7 @@ class vulture:
 				
 
 		
-	def masteri():
+	def masteri(self):
 		infile = self.infile
 		yardi_err = []
 		if infile.endswith("/"): 
@@ -61,12 +61,12 @@ class vulture:
 
 
 
-	def timestamp():
+	def timestamp(self):
 		now = datetime.now()
 		return "%d.%d.%d %d_%d" % (now.year, now.month, now.day, now.hour, now.minute)
 
 	
-	def write(lines, outfile, master=False):
+	def write(self, lines, outfile, master=False):
 		if not master:
 			with open(outfile, 'wb') as w_file:
 				w_file.write("property_id,floorplan_name,unit_name,sqft,bed,bath,price,date_available\n")
@@ -81,9 +81,22 @@ class vulture:
 						line.get('date_available', line.get('available', ''))))
 		else:
 			lines = sorted(lines, key=lambda x: x['property_id'])
+			propID = ''
+			now = datetime.today()
+			for line in lines:
+				if propID != line.get('property_id')
+					propID = line.get('property_id')
+					w_file.write('%s,Refresh,Refresh,,1,1,%s,unavailable\n' % (propID, "9%s%s" % (now.month, now.day)))
+				w_file.write("%s,%s,%s,%s,%s,%s,%s,%s\n" % (line.get('property_id', ''),
+						line.get('floorplan_name', ''),
+						line.get('unit_name', ''),
+						line.get('sqft', ''),
+						line.get('bed', ''),
+						line.get('bath', ''),
+						line.get('price', ''),
+						line.get('date_available', line.get('available', ''))))
 
-
-	def normalize(line):
+	def normalize(self, line):
 		n_line = dict(line)
 		n_line['price'] = int(round(float(re.sub('[^\d.-]', '', n_line['price']))))
 		n_line['bed'] = int(float(n_line['bed']))
@@ -111,7 +124,7 @@ class vulture:
 
 		return n_line
 
-	def filter_lines(line):
+	def filter_lines(self, line):
 		if line.get('floorplan_name') in unavailable:
 			return None
 
@@ -142,7 +155,7 @@ class vulture:
 		else:
 			return True
 
-	def process():
+	def process(self):
 		output, n_data, e_data = [], [], []
 		for line in self.input:
 			result = filter_lines(line)
@@ -154,7 +167,7 @@ class vulture:
 				else:
 					e_data.append(line)
 		timestamp = self.timestamp()
-		self.write(output, self.output + "%s master_output.csv" % timestamp)
+		self.write(output, self.output + "%s master_output.csv" % timestamp, True)
 		self.write(n_data, self.output + "%s no_data.csv" % timestamp)
 		self.write(e_data, self.output + "%s data_err.csv" % timestamp)
 
