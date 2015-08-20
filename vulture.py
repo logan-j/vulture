@@ -5,6 +5,7 @@ import csv
 import re
 import os
 from math import floor
+from sets import Set
 
 unavailable = ['N/A', 'Month rent price is unavailable', '***NO UNITS FOUND***', '***NO CURRENT AVAILABILITY***']
 
@@ -13,7 +14,12 @@ class vulture:
 		self.input = []
 		self.infile = os.path.normpath(args.infile)
 		self.yardi = {}
+		self.database = {}
 		if os.path.split(self.infile)[1] == '': self.infile = os.path.split(self.infile)[0]
+		if args.error:
+			self.err = self.infile
+			self.infile = os.path.split(self.infile)[0]
+
 		m1 = os.path.split(self.infile)[1]
 		m2 = os.path.split(os.path.split(self.infile)[0])[1]
 		m3 = os.path.split(os.path.split(os.path.split(self.infile)[0])[0])[0]
@@ -25,11 +31,69 @@ class vulture:
 		database = [x for x in glob(m3 + "/*.*") if "database" in x.lower()][0]
 		with open(database, 'r') as d_file:
 			for line in csv.DictReader(d_file, delimiter='\t'):
+				if not self.database.has_key(line['property_id']):
+					self.database[line['property_id']] = {}
+				self.database[line['property_id']][line['unit_name']] = line
 				if not self.yardi.has_key(line['property_id']):
 					self.yardi[line['property_id']] = {}
-				self.yardi[line['property_id']][line['unit_name']] = line['floorplan_name']		
+				self.yardi[line['property_id']][line['unit_name']] = line['floorplan_name']
 
-		
+	def average(self, building):
+		output = list(building)
+		floorplans = {}
+		bedbath = {}
+		for unit in building:
+			if unit['floorplan_name'] == 'Refresh':
+				continue
+			keys = [x.strip() for x in re.split("-", unit['floorplan_name'])]
+			if not floorplans.has_key(keys[0]):
+				floorplans[keys[0]] = [0,0]
+
+			if not bedbath.has_key(keys[1]):
+				bedbath[keys[1]] = [0,0]
+
+			floorplans[keys[0]][0] += float(unit['price'])
+			floorplans[keys[0]][1] += 1.0
+			bedbath[keys[1]][0] += float(unit['price'])
+			bedbath[keys[1]][1] += 1.0
+
+		for unit in output:
+			if unit['floorplan_name'] == 'Refresh':
+				unit['fp_ave'] = unit['bb_ave'] = unit['db_ave'] = unit['pp_sqft'] = 'N/A'
+				continue
+			keys = [x.strip() for x in re.split("-", unit['floorplan_name'])]
+			unit['fp_ave'] = "%0.2f" % ((float(unit['price']) * floorplans[keys[0]][1]) / floorplans[keys[0]][0] - 1.0)
+			unit['bb_ave'] = "%0.2f" % ((float(unit['price']) * bedbath[keys[1]][1]) / bedbath[keys[1]][0] - 1.0)
+			unit['pp_sqft'] = 'N/A'
+			if unit['sqft'] != '' and unit['sqft'] != None and unit['sqft'] != '-':
+				unit['pp_sqft'] = "%0.2f" % (float(unit['price']) / float(unit['sqft']))
+			unit['db_ave'] = 'N/A'
+			db = self.database.get(unit['property_id'], {})
+			d_unit = db.get(unit['unit_name'], db.get(re.split("-",unit['unit_name'])[0].strip(), False))
+			if d_unit:
+				unit['db_ave'] = "%0.2f" % (float(self.database[unit['property_id']][d_unit['unit_name']]['price']) / float(unit['price']) - 1.0)
+
+
+		return output
+
+	def error(self):
+		err, building = [], []
+		outpath = os.path.split(self.err)[0]
+		with open(self.err, 'r') as r_file:
+			input = csv.DictReader(r_file)
+			propID = ''
+			for line in input:
+				if propID != line['property_id']:
+					propID = line['property_id']
+					err += self.average(building)
+					building = []
+				building.append(line)
+		timestamp = self.timestamp()
+		self.write(err, os.path.join(outpath, "%s Error_Trend.csv" % timestamp), None)
+
+
+
+
 	def masteri(self):
 		infile = self.infile
 		yardi_err = []
@@ -53,6 +117,9 @@ class vulture:
 						elif un not in unavailable and un != None and un != '':
 							yardi_err.append(dict(line))
 						else:
+							fp = line['floorplan_name']
+							if fp != None and fp != '':
+								line['floorplan_name'] = "\"%s\"" % fp.strip()
 							self.input.append(dict(line))
 					else:
 						self.input.append(dict(line))
@@ -75,7 +142,7 @@ class vulture:
 
 	
 	def write(self, lines, outfile, master=False):
-		if not master:
+		if master == False:
 			with open(outfile, 'wb') as w_file:
 				w_file.write("property_id,floorplan_name,unit_name,sqft,bed,bath,price,date_available\n")
 				for line in lines:
@@ -87,7 +154,7 @@ class vulture:
 						line.get('bath', ''),
 						line.get('price', ''),
 						line.get('date_available', line.get('available_date', ''))))
-		else:
+		elif master == True:
 			lines = sorted(lines, key=lambda x: x['property_id'])
 			propID = ''
 			now = datetime.today()
@@ -107,6 +174,11 @@ class vulture:
 							line.get('bath', ''),
 							line.get('price', ''),
 							line.get('date_available', line.get('available_date', ''))))
+		else:
+			with open(outfile, 'wb') as w_file:
+				writer = csv.DictWriter(w_file, fieldnames=['property_id', 'floorplan_name', 'unit_name', 'sqft', 'bed', 'bath', 'price', 'date_available', 'bb_ave', 'db_ave', 'fp_ave', 'pp_sqft'])
+				writer.writeheader()
+				writer.writerows(sorted(lines, key=lambda x: x['property_id']))
 
 	def normalize(self, line):
 		n_line = dict(line)
@@ -132,9 +204,11 @@ class vulture:
 				n_line['available_date'] = "%s-%s-%s" % (date.year, date.month, date.day)
 		except:
 			pass
+		n_line['floorplan_name'] = n_line['floorplan_name'].strip("\"")
 		n_line['floorplan_name'] += " - %s/%s" % (n_line['bed'], n_line['bath'])
 		n_line['unit_name'] += " - (%s)" % n_line['floorplan_name']
-
+		n_line['floorplan_name'] = "\"%s\"" % n_line['floorplan_name']
+		n_line['unit_name'] = "\"%s\"" % n_line['unit_name']
 
 		return n_line
 
@@ -181,6 +255,13 @@ class vulture:
 				else:
 					e_data.append(line)
 		timestamp = self.timestamp()
+
+		pid = Set([x['property_id'] for x in output])
+		for i in xrange(len(n_data) - 1, -1, -1):
+			if n_data[i]['property_id'] in pid:
+				n_data.pop(i)
+
+
 		self.write(output, os.path.join(self.output,"%s master_output.csv" % timestamp), True)
 		self.write(n_data, os.path.join(self.output,"%s no_data.csv" % timestamp))
 		self.write(e_data, os.path.join(self.output,"%s data_err.csv" % timestamp))
@@ -199,13 +280,15 @@ def main():
 
 	args = parser.parse_args()
 
+	conglo = vulture(args)
+
+
 	if args.error:
-		pass
+		conglo.error()
 	elif args.split:
 		pass
 	else:
 		
-		conglo = vulture(args)
 		conglo.masteri()
 		conglo.process()
 
