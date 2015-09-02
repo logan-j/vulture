@@ -4,6 +4,7 @@ import argparse
 import csv
 import re
 import os
+import sys
 from math import floor
 from sets import Set
 
@@ -28,16 +29,35 @@ class vulture:
 		self.output = os.path.join(m3,  "Output Files/%s/%s" % (filename, m1))
 		if not os.path.exists(self.output):
 			os.makedirs(self.output)
-		database = [x for x in glob(m3 + "/*.*") if "database" in x.lower()][0]
-		with open(database, 'r') as d_file:
-			for line in csv.DictReader(d_file, delimiter='\t'):
-				if not self.database.has_key(line['property_id']):
-					self.database[line['property_id']] = {}
-				self.database[line['property_id']][line['unit_name']] = line
+		
+		yardi = os.path.normpath(args.yardi[0])
+		if args.yardi[0] == '':
+			yardi = [x for x in glob(m3 + "/*.*") if "yardi" in x.lower()][0]
+		database = os.path.normpath(args.database[0])
+		if args.database[0] == '':
+			args.file = True
+			database = [x for x in glob(m3 + "/*.*") if "database" in x.lower()][0]
+		
+		with open(yardi, 'r') as y_file:
+			for line in csv.DictReader(y_file, delimiter='\t'):
 				if not self.yardi.has_key(line['property_id']):
 					self.yardi[line['property_id']] = {}
 				self.yardi[line['property_id']][line['unit_name']] = line['floorplan_name']
 
+		if args.error:
+			if args.file:
+				self.database = self.access_database(database)
+				"""
+				with open(database, 'r') as d_file:
+					for line in csv.DictReader(d_file, delimiter='\t'):
+						if not self.database.has_key(line['property_id']):
+							self.database[line['property_id']] = {}
+						self.database[line['property_id']][line['unit_name']] = line
+				"""
+			else:
+				self.database = self.access_database(database, True)
+
+				
 	def average(self, building):
 		output = list(building)
 		floorplans = {}
@@ -69,9 +89,10 @@ class vulture:
 				unit['pp_sqft'] = "%0.2f" % (float(unit['price']) / float(unit['sqft']))
 			unit['db_ave'] = 'N/A'
 			db = self.database.get(unit['property_id'], {})
-			d_unit = db.get(unit['unit_name'], db.get(re.split("-",unit['unit_name'])[0].strip(), False))
-			if d_unit:
-				unit['db_ave'] = "%0.2f" % (float(self.database[unit['property_id']][d_unit['unit_name']]['price']) / float(unit['price']) - 1.0)
+			#d_unit = db.get(unit['unit_name'], db.get(re.split("-",unit['unit_name'])[0].strip(), False))
+			if db.get(re.sub('\s', '', unit['unit_name'])):
+				unit['db_ave'] = "%0.2f" % ((float(unit['price']) * self.database[unit['property_id']][re.sub('\s', '', unit['unit_name'])][1]) / self.database[unit['property_id']][re.sub('\s', '', unit['unit_name'])][0] - 1.0)
+				#unit['db_ave'] = "%0.2f" % (float(self.database[unit['property_id']][d_unit['unit_name']]['price']) / float(unit['price']) - 1.0)
 
 
 		return output
@@ -92,6 +113,27 @@ class vulture:
 		self.write(err, os.path.join(outpath, "%s Error_Trend.csv" % timestamp), None)
 
 
+	def access_database(self, dbase, dcred=False):
+		if not dcred:
+			d_out = {}
+			with open(dbase, 'r') as r_file:
+				reader = csv.DictReader(r_file)
+				error = False
+				for line in reader:
+					try:
+						if not d_out.has_key(line['property_id']):
+							d_out[line['property_id']] = {}
+						if not d_out[line['property_id']].has_key(re.sub('\s', '', line['unit_name'])):
+							d_out[line['property_id']][re.sub('\s', '', line['unit_name'])] = [0,0]
+						d_out[line['property_id']][re.sub('\s', '', line['unit_name'])][0] += float(line['price'])
+						d_out[line['property_id']][re.sub('\s', '', line['unit_name'])][1] += 1.0
+					except:
+						error = True
+				if error:
+					sys.stderr.write("Some malformed lines in database input.\n")
+			return d_out
+		else:
+			pass
 
 
 	def masteri(self):
@@ -277,6 +319,12 @@ def main():
 	parser.add_argument('-e', '--error', action='store_true', default=False, help='Create an error trend.')
 
 	parser.add_argument('-s', '--split', action='store_true', default=False, help='Split the master output file for upload.')
+
+	parser.add_argument('-d', '--database', nargs=1, type=str, default=[''], help='Manually specify the database file or credentials.')
+
+	parser.add_argument('-y', '--yardi', nargs=1, type=str, default=[''], help='Manually specify the yardi file.')
+
+	parser.add_argument('-f', '--file', action='store_true', default=False, help='Specify file-mode for the database argument. Credential-mode otherwise.')
 
 	args = parser.parse_args()
 
