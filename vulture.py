@@ -30,21 +30,24 @@ class vulture:
 		if not os.path.exists(self.output):
 			os.makedirs(self.output)
 		
-		yardi = os.path.normpath(args.yardi[0])
-		if args.yardi[0] == '':
-			yardi = [x for x in glob(m3 + "/*.*") if "yardi" in x.lower()][0]
-		database = os.path.normpath(args.database[0])
-		if args.database[0] == '':
-			args.file = True
-			database = [x for x in glob(m3 + "/*.*") if "database" in x.lower()][0]
-		
-		with open(yardi, 'r') as y_file:
-			for line in csv.DictReader(y_file, delimiter='\t'):
-				if not self.yardi.has_key(line['property_id']):
-					self.yardi[line['property_id']] = {}
-				self.yardi[line['property_id']][line['unit_name']] = line['floorplan_name']
 
-		if args.error:
+
+		
+		if not args.error:
+			yardi = os.path.normpath(args.yardi[0])
+			if args.yardi[0] == '':
+				yardi = [x for x in glob(m3 + "/*.*") if "yardi" in x.lower()][0]
+			with open(yardi, 'r') as y_file:
+				for line in csv.DictReader(y_file, delimiter='\t'):
+					if not self.yardi.has_key(line['property_id']):
+						self.yardi[line['property_id']] = {}
+					self.yardi[line['property_id']][line['unit_name']] = line['floorplan_name']
+
+		else:
+			database = os.path.normpath(args.database[0])
+			if args.database[0] == '':
+				args.file = True
+				database = [x for x in glob(m3 + "/*.*") if "database" in x.lower()][0]
 			if args.file:
 				self.database = self.access_database(database)
 				"""
