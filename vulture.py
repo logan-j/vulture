@@ -5,6 +5,8 @@ import csv
 import re
 import os
 import sys
+import psycopg2
+import psycopg2.extras
 from math import floor
 from sets import Set
 
@@ -29,36 +31,41 @@ class vulture:
 		self.output = os.path.join(m3,  "Output Files/%s/%s" % (filename, m1))
 		if not os.path.exists(self.output):
 			os.makedirs(self.output)
-		
 
+		blank = False
 
-		
 		if not args.error:
 			yardi = os.path.normpath(args.yardi[0])
 			if args.yardi[0] == '':
-				yardi = [x for x in glob(m3 + "/*.*") if "yardi" in x.lower()][0]
-			with open(yardi, 'r') as y_file:
-				for line in csv.DictReader(y_file, delimiter='\t'):
-					if not self.yardi.has_key(line['property_id']):
-						self.yardi[line['property_id']] = {}
-					self.yardi[line['property_id']][line['unit_name']] = line['floorplan_name']
+				try:
+					yardi = [x for x in glob(m3 + "/*.*") if "yardi" in x.lower()][0]
+				except:
+					self.yardi = {}
+					blank = True
+
+			if not blank:
+				with open(yardi, 'r') as y_file:
+					for line in csv.DictReader(y_file, delimiter='\t'):
+						if not self.yardi.has_key(line['property_id']):
+							self.yardi[line['property_id']] = {}
+						self.yardi[line['property_id']][line['unit_name']] = line['floorplan_name']
 
 		else:
+
 			database = os.path.normpath(args.database[0])
 			if args.database[0] == '':
 				args.file = True
-				database = [x for x in glob(m3 + "/*.*") if "database" in x.lower()][0]
-			if args.file:
-				self.database = self.access_database(database)
-				"""
-				with open(database, 'r') as d_file:
-					for line in csv.DictReader(d_file, delimiter='\t'):
-						if not self.database.has_key(line['property_id']):
-							self.database[line['property_id']] = {}
-						self.database[line['property_id']][line['unit_name']] = line
-				"""
-			else:
-				self.database = self.access_database(database, True)
+				try:
+					database = [x for x in glob(m3 + "/*.*") if "database" in x.lower()][0]
+				except:
+					blank = True
+					self.database = {}
+			if not blank:
+				if args.file and not args.cached:
+					self.database = self.access_database(database)
+					
+				else:
+					self.database = self.access_database(database, True, args.cached)
 
 				
 	def average(self, building):
@@ -68,7 +75,8 @@ class vulture:
 		for unit in building:
 			if unit['floorplan_name'] == 'Refresh':
 				continue
-			keys = [x.strip() for x in re.split("-", unit['floorplan_name'])]
+			#keys = [x.strip() for x in re.split("-", unit['floorplan_name'])]
+			keys = [unit['floorplan_name'], "%s%s" % (unit['bed'], unit['bath'])]
 			if not floorplans.has_key(keys[0]):
 				floorplans[keys[0]] = [0,0]
 
@@ -84,18 +92,17 @@ class vulture:
 			if unit['floorplan_name'] == 'Refresh':
 				unit['fp_ave'] = unit['bb_ave'] = unit['db_ave'] = unit['pp_sqft'] = 'N/A'
 				continue
-			keys = [x.strip() for x in re.split("-", unit['floorplan_name'])]
+			keys = [unit['floorplan_name'], "%s%s" % (unit['bed'], unit['bath'])]
 			unit['fp_ave'] = "%0.2f" % ((float(unit['price']) * floorplans[keys[0]][1]) / floorplans[keys[0]][0] - 1.0)
 			unit['bb_ave'] = "%0.2f" % ((float(unit['price']) * bedbath[keys[1]][1]) / bedbath[keys[1]][0] - 1.0)
 			unit['pp_sqft'] = 'N/A'
-			if unit['sqft'] != '' and unit['sqft'] != None and unit['sqft'] != '-':
+			if unit['sqft'] != '' and unit['sqft'] != None and unit['sqft'] != '-' and str(unit['sqft']) != '0':
 				unit['pp_sqft'] = "%0.2f" % (float(unit['price']) / float(unit['sqft']))
 			unit['db_ave'] = 'N/A'
 			db = self.database.get(unit['property_id'], {})
-			#d_unit = db.get(unit['unit_name'], db.get(re.split("-",unit['unit_name'])[0].strip(), False))
 			if db.get(re.sub('\s', '', unit['unit_name'])):
-				unit['db_ave'] = "%0.2f" % ((float(unit['price']) * self.database[unit['property_id']][re.sub('\s', '', unit['unit_name'])][1]) / self.database[unit['property_id']][re.sub('\s', '', unit['unit_name'])][0] - 1.0)
-				#unit['db_ave'] = "%0.2f" % (float(self.database[unit['property_id']][d_unit['unit_name']]['price']) / float(unit['price']) - 1.0)
+				s_name = re.sub('\s', '', unit['unit_name'])
+				unit['db_ave'] = "%0.2f" % ((float(unit['price']) * self.database[unit['property_id']][s_name][1]) / self.database[unit['property_id']][s_name][0] - 1.0)
 
 
 		return output
@@ -104,7 +111,7 @@ class vulture:
 		err, building = [], []
 		outpath = os.path.split(self.err)[0]
 		with open(self.err, 'r') as r_file:
-			input = csv.DictReader(r_file)
+			input = csv.DictReader(r_file, delimiter="\t")
 			propID = ''
 			for line in input:
 				if propID != line['property_id']:
@@ -116,8 +123,9 @@ class vulture:
 		self.write(err, os.path.join(outpath, "%s Error_Trend.csv" % timestamp), None)
 
 
-	def access_database(self, dbase, dcred=False):
+	def access_database(self, dbase, dcred=False, cached=False):
 		if not dcred:
+			sys.stderr.write("Reading in database file...\n")
 			d_out = {}
 			with open(dbase, 'r') as r_file:
 				reader = csv.DictReader(r_file)
@@ -136,7 +144,32 @@ class vulture:
 					sys.stderr.write("Some malformed lines in database input.\n")
 			return d_out
 		else:
-			pass
+			sys.stderr.write("Establishing database connection...\n")
+
+			if cached:
+				dbase = "postgres://uc1kkn0rr14fbo:pfr07r9ro6ck8gdp78amss9nl6e@ec2-54-235-154-118.compute-1.amazonaws.com:5552/d753p6ts62if6p"
+			d_out = {}
+			try:
+				conn = psycopg2.connect(dbase)
+				cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+				cur.execute('''SELECT * FROM "RTA Curation Upload History"''')
+				lines = cur.fetchall()
+				conn.close()
+				for line in lines:
+					
+					if not d_out.has_key(line['property_id']):
+						d_out[line['property_id']] = {}
+					if not d_out[line['property_id']].has_key(re.sub('\s', '', line['unit_name'])):
+						d_out[line['property_id']][re.sub('\s', '', line['unit_name'])] = [0,0]
+					d_out[line['property_id']][re.sub('\s', '', line['unit_name'])][0] += float(line['price'])
+					d_out[line['property_id']][re.sub('\s', '', line['unit_name'])][1] += 1.0
+				return d_out
+			except Exception as inst:
+				sys.stderr.write("Database Connection Failed. %s\n" % inst)
+				return {}
+
+			
+						
 
 
 	def masteri(self):
@@ -328,6 +361,8 @@ def main():
 	parser.add_argument('-y', '--yardi', nargs=1, type=str, default=[''], help='Manually specify the yardi file.')
 
 	parser.add_argument('-f', '--file', action='store_true', default=False, help='Specify file-mode for the database argument. Credential-mode otherwise.')
+
+	parser.add_argument('-c', '--cached', action='store_true', default=False, help='Use the stored database credentials.')
 
 	args = parser.parse_args()
 
