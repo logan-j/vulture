@@ -87,14 +87,15 @@ class vulture:
 			floorplans[keys[0]][1] += 1.0
 			bedbath[keys[1]][0] += float(unit['price'])
 			bedbath[keys[1]][1] += 1.0
+	
 
 		for unit in output:
 			if unit['floorplan_name'] == 'Refresh':
 				unit['fp_ave'] = unit['bb_ave'] = unit['db_ave'] = unit['pp_sqft'] = 'N/A'
 				continue
 			keys = [unit['floorplan_name'], "%s%s" % (unit['bed'], unit['bath'])]
-			unit['fp_ave'] = "%0.2f" % ((float(unit['price']) * floorplans[keys[0]][1]) / floorplans[keys[0]][0] - 1.0)
-			unit['bb_ave'] = "%0.2f" % ((float(unit['price']) * bedbath[keys[1]][1]) / bedbath[keys[1]][0] - 1.0)
+			unit['fp_ave'] = "%0.3f" % ((float(unit['price']) * floorplans[keys[0]][1]) / floorplans[keys[0]][0] - 1.0)
+			unit['bb_ave'] = "%0.3f" % ((float(unit['price']) * bedbath[keys[1]][1]) / bedbath[keys[1]][0] - 1.0)
 			unit['pp_sqft'] = 'N/A'
 			if unit['sqft'] != '' and unit['sqft'] != None and unit['sqft'] != '-' and str(unit['sqft']) != '0':
 				unit['pp_sqft'] = "%0.2f" % (float(unit['price']) / float(unit['sqft']))
@@ -102,7 +103,7 @@ class vulture:
 			db = self.database.get(unit['property_id'], {})
 			if db.get(re.sub('\s', '', unit['unit_name'])):
 				s_name = re.sub('\s', '', unit['unit_name'])
-				unit['db_ave'] = "%0.2f" % ((float(unit['price']) * self.database[unit['property_id']][s_name][1]) / self.database[unit['property_id']][s_name][0] - 1.0)
+				unit['db_ave'] = "%0.3f" % ((float(unit['price']) * self.database[unit['property_id']][s_name][1]) / self.database[unit['property_id']][s_name][0] - 1.0)
 
 
 		return output
@@ -119,6 +120,8 @@ class vulture:
 					err += self.average(building)
 					building = []
 				building.append(line)
+			err += self.average(building)
+
 		timestamp = self.timestamp()
 		self.write(err, os.path.join(outpath, "%s Error_Trend.csv" % timestamp), None)
 
