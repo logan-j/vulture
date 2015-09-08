@@ -87,7 +87,7 @@ class vulture:
 			floorplans[keys[0]][1] += 1.0
 			bedbath[keys[1]][0] += float(unit['price'])
 			bedbath[keys[1]][1] += 1.0
-	
+
 
 		for unit in output:
 			if unit['floorplan_name'] == 'Refresh':
@@ -375,7 +375,7 @@ def main():
 	if args.error:
 		conglo.error()
 	elif args.split:
-		pass
+		pass #part 5
 	else:
 		
 		conglo.masteri()
