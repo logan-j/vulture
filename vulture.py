@@ -88,7 +88,6 @@ class vulture:
 			bedbath[keys[1]][0] += float(unit['price'])
 			bedbath[keys[1]][1] += 1.0
 
-
 		for unit in output:
 			if unit['floorplan_name'] == 'Refresh':
 				unit['fp_ave'] = unit['bb_ave'] = unit['db_ave'] = unit['pp_sqft'] = 'N/A'
@@ -114,7 +113,7 @@ class vulture:
 		with open(self.err, 'r') as r_file:
 			input = csv.DictReader(r_file, delimiter="\t")
 			propID = ''
-			for line in input:
+			for line in sorted(input, key=lambda x: x['property_id']):
 				if propID != line['property_id']:
 					propID = line['property_id']
 					err += self.average(building)
