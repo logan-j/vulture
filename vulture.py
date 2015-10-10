@@ -10,7 +10,7 @@ import psycopg2.extras
 from math import floor
 from sets import Set
 
-unavailable = ['N/A', 'Month rent price is unavailable', '***NO UNITS FOUND***', '***NO CURRENT AVAILABILITY***']
+unavailable = ['N/A', '12 MONTH RENT PRICE IS UNAVAILABLE', '***NO UNITS FOUND***', '***NO CURRENT AVAILABILITY***', "MONTH RENT PRICE IS UNAVAILABLE"]
 
 class vulture:
 	def __init__(self, args):
@@ -90,19 +90,21 @@ class vulture:
 
 		for unit in output:
 			if unit['floorplan_name'] == 'Refresh':
-				unit['fp_ave'] = unit['bb_ave'] = unit['db_ave'] = unit['pp_sqft'] = 'N/A'
+				unit['fp_ave'] = unit['bb_ave'] = unit['db_ave'] = unit['pp_sqft'] = unit['fp_ave_actual'] = unit['bb_ave_actual'] = unit['db_ave_actual'] = 'N/A'
 				continue
 			keys = [unit['floorplan_name'], "%s%s" % (unit['bed'], unit['bath'])]
 			unit['fp_ave'] = "%0.3f" % ((float(unit['price']) * floorplans[keys[0]][1]) / floorplans[keys[0]][0] - 1.0)
+			unit['fp_ave_actual'] = "%0.3f" % (floorplans[keys[0]][0]/ floorplans[keys[0]][1])
 			unit['bb_ave'] = "%0.3f" % ((float(unit['price']) * bedbath[keys[1]][1]) / bedbath[keys[1]][0] - 1.0)
+			unit['bb_ave_actual'] = "%0.3f" % (bedbath[keys[1]][0]/ bedbath[keys[1]][1])
 			unit['pp_sqft'] = 'N/A'
 			if unit['sqft'] != '' and unit['sqft'] != None and unit['sqft'] != '-' and str(unit['sqft']) != '0':
-				unit['pp_sqft'] = "%0.2f" % (float(unit['price']) / float(unit['sqft']))
-			unit['db_ave'] = 'N/A'
+				unit['pp_sqft'] = "%0.3f" % (float(unit['price']) / float(unit['sqft']))
 			db = self.database.get(unit['property_id'], {})
 			if db.get(re.sub('\s', '', unit['unit_name'])):
 				s_name = re.sub('\s', '', unit['unit_name'])
 				unit['db_ave'] = "%0.3f" % ((float(unit['price']) * self.database[unit['property_id']][s_name][1]) / self.database[unit['property_id']][s_name][0] - 1.0)
+				unit['db_ave_actual'] = "%0.3f" %  self.database[unit['property_id']][s_name][0] / self.database[unit['property_id']][s_name][1]
 
 
 		return output
@@ -111,9 +113,10 @@ class vulture:
 		err, building = [], []
 		outpath = os.path.split(self.err)[0]
 		with open(self.err, 'r') as r_file:
-			input = csv.DictReader(r_file, delimiter="\t")
+			input = csv.DictReader(r_file, delimiter=",")
+	
 			propID = ''
-			for line in sorted(input, key=lambda x: x['property_id']):
+			for line in sorted(input, key=lambda x: int(x['property_id'])):
 				if propID != line['property_id']:
 					propID = line['property_id']
 					err += self.average(building)
@@ -126,7 +129,9 @@ class vulture:
 
 
 	def access_database(self, dbase, dcred=False, cached=False):
-		if not dcred:
+		if dbase == '':
+			return {}
+		elif not dcred:
 			sys.stderr.write("Reading in database file...\n")
 			d_out = {}
 			with open(dbase, 'r') as r_file:
@@ -222,43 +227,51 @@ class vulture:
 
 	
 	def write(self, lines, outfile, master=False):
+		fieldnames = ['property_id', 'floorplan_name', 'unit_name', 'sqft', 'bed', 'bath', 'price', 'date_available']
+
 		if master == False:
 			with open(outfile, 'wb') as w_file:
-				w_file.write("property_id,floorplan_name,unit_name,sqft,bed,bath,price,date_available\n")
-				for line in lines:
-					w_file.write("%s,%s,%s,%s,%s,%s,%s,%s\n" % (line.get('property_id', ''),
-						line.get('floorplan_name', ''),
-						line.get('unit_name', ''),
-						line.get('sqft', ''),
-						line.get('bed', ''),
-						line.get('bath', ''),
-						line.get('price', ''),
-						line.get('date_available', line.get('available_date', ''))))
+				
+				writer = csv.DictWriter(w_file, fieldnames=fieldnames, quotechar='\"', extrasaction='ignore')
+				writer.writeheader()
+				writer.writerows(lines)
+				
 		elif master == True:
-			lines = sorted(lines, key=lambda x: x['property_id'])
+			fieldnames = ['property_id','floorplan_name','unit_name','sqft','bed','bath','price','date_available']
+			lines = sorted(lines, key=lambda x: int(x['property_id']))
 			propID = ''
 			now = datetime.today()
 			with open(outfile, 'wb') as w_file:
-				w_file.write("property_id,floorplan_name,unit_name,sqft,bed,bath,price,date_available\n")
-
+				writer = csv.DictWriter(w_file, delimiter=',', fieldnames=fieldnames, extrasaction='ignore', quotechar='\"')
+				writer.writeheader()
 				for line in lines:
+					if line.has_key('date_available'):
+						pass
+					elif line.has_key('available_date'):
+						line['date_available'] = line['available_date']
+					else:
+						line['date_available'] = ''
 					if propID != line.get('property_id'):
-						propID = line.get('property_id')		
-						w_file.write('%s,Refresh,Refresh,,1,1,%s,unavailable\n' % (propID, "9%s%s" % (str(now.month).zfill(2), str(now.day).zfill(2))))
-					
-					w_file.write("%s,%s,%s,%s,%s,%s,%s,%s\n" % (line.get('property_id', ''),
-							line.get('floorplan_name', ''),
-							line.get('unit_name', ''),
-							line.get('sqft', ''),
-							line.get('bed', ''),
-							line.get('bath', ''),
-							line.get('price', ''),
-							line.get('date_available', line.get('available_date', ''))))
+						propID = line.get('property_id')
+						writer.writerow({	"property_id": propID,
+											"floorplan_name": 'Refresh',
+											'unit_name': 'Refresh',
+											'sqft': '',
+											'bed': 1,
+											'bath': 1,
+											'price': "9%s%s" % (str(now.month).zfill(2), str(now.day).zfill(2)),
+											'date_available': 'unavailable'
+										})
+					writer.writerow(line)
+
 		else:
 			with open(outfile, 'wb') as w_file:
-				writer = csv.DictWriter(w_file, fieldnames=['property_id', 'floorplan_name', 'unit_name', 'sqft', 'bed', 'bath', 'price', 'date_available', 'bb_ave', 'db_ave', 'fp_ave', 'pp_sqft'])
+				fieldnames = [	'property_id', 'floorplan_name', 'unit_name', 'sqft', 'bed', 'bath', 'price', 'date_available',
+								'bb_ave', 'db_ave', 'fp_ave', 'pp_sqft', 'bb_ave_actual', 'db_ave_actual', 'fp_ave_actual']
+
+				writer = csv.DictWriter(w_file, fieldnames=fieldnames, quotechar='\"')
 				writer.writeheader()
-				writer.writerows(sorted(lines, key=lambda x: x['property_id']))
+				writer.writerows(sorted(lines, key=lambda x: int(x['property_id'])))
 
 	def normalize(self, line):
 		n_line = dict(line)
@@ -293,7 +306,7 @@ class vulture:
 		return n_line
 
 	def filter_lines(self, line):
-		if line.get('floorplan_name') in unavailable:
+		if line.get('floorplan_name').upper().strip().strip('\"') in unavailable:
 			return None
 
 		try:
@@ -336,11 +349,19 @@ class vulture:
 					e_data.append(line)
 		timestamp = self.timestamp()
 
+
 		pid = Set([x['property_id'] for x in output])
 		for i in xrange(len(n_data) - 1, -1, -1):
 			if n_data[i]['property_id'] in pid:
-				n_data.pop(i)
+				del n_data[i]
 
+
+		fps = Set()
+		for i in xrange(len(output) - 1, -1, -1):
+			if output[i]['floorplan_name'] in fps:
+				del output[i]
+			else:
+				fps.add(output[i]['floorplan_name'])
 
 		self.write(output, os.path.join(self.output,"%s master_output.csv" % timestamp), True)
 		self.write(n_data, os.path.join(self.output,"%s no_data.csv" % timestamp))
