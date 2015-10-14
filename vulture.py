@@ -10,13 +10,16 @@ import psycopg2.extras
 from math import floor
 from sets import Set
 
-unavailable = ['N/A', '12 MONTH RENT PRICE IS UNAVAILABLE', '***NO UNITS FOUND***', '***NO CURRENT AVAILABILITY***', "MONTH RENT PRICE IS UNAVAILABLE"]
+unavailable = [	'N/A', '12 MONTH RENT PRICE IS UNAVAILABLE', '***NO UNITS FOUND***', 
+				'***NO CURRENT AVAILABILITY***', "MONTH RENT PRICE IS UNAVAILABLE",
+				"***UNKNOWN ERROR***"]
 
 class vulture:
 	def __init__(self, args):
 		self.input = []
 		self.infile = os.path.normpath(args.infile)
 		self.yardi = {}
+		self.o_yardi = []
 		self.database = {}
 		if os.path.split(self.infile)[1] == '': self.infile = os.path.split(self.infile)[0]
 		if args.error:
@@ -27,7 +30,7 @@ class vulture:
 		m2 = os.path.split(os.path.split(self.infile)[0])[1]
 		m3 = os.path.split(os.path.split(os.path.split(self.infile)[0])[0])[0]
 		self.header = re.sub("[a-zA-Z]", "", m2)
-		filename = self.header + "Outputs"
+		filename = self.header + " Outputs"
 		self.output = os.path.join(m3,  "Output Files/%s/%s" % (filename, m1))
 		if not os.path.exists(self.output):
 			os.makedirs(self.output)
@@ -196,16 +199,16 @@ class vulture:
 					result = self.yardi.get(line['property_id'])
 					if result:
 						un = line['unit_name']
-						if result.get(un):
+						if result.get(un) or un == '':
 							line['floorplan_name'] = result[line['unit_name']]
-							self.input.append(dict(line)) 
+							self.o_yardi.append(dict(line)) 
 						elif un not in unavailable and un != None and un != '':
 							yardi_err.append(dict(line))
 						else:
 							fp = line['floorplan_name']
 							if fp != None and fp != '':
-								line['floorplan_name'] = "\"%s\"" % fp.strip()
-							self.input.append(dict(line))
+								line['floorplan_name'] = "%s" % fp.strip()
+							self.o_yardi.append(dict(line))
 					else:
 						self.input.append(dict(line))
 		timestamp = self.timestamp()
@@ -216,6 +219,7 @@ class vulture:
 				else:
 					self.input[i][key] = ''
 
+		
 		self.write(self.input, self.output + "/%s master_input.csv" % timestamp)
 		self.write(yardi_err, self.output + "/%s yardi_err.csv" % timestamp)
 
@@ -273,13 +277,13 @@ class vulture:
 				writer.writeheader()
 				writer.writerows(sorted(lines, key=lambda x: int(x['property_id'])))
 
-	def normalize(self, line):
+	def normalize(self, line, yardi=False):
 		n_line = dict(line)
 		n_line['price'] = int(round(float(re.sub('[^\d.-]', '', n_line['price']))))
 		n_line['bed'] = int(float(n_line['bed']))
 		n_line['bath'] = floor(float(n_line['bath']) * 2.0)/2.0
 		if int(n_line['bath']) == n_line['bath']: n_line['bath'] = int(n_line['bath'])
-		if n_line['sqft'] == '-': n_line['sqft'] = ''
+		if n_line['sqft'] == '-' or n_line['sqft'] == '--': n_line['sqft'] = ''
 
 		try:
 			date = datetime.strptime(line.get('date_available', line.get('available_date', '')),'%m/%d/%Y')
@@ -297,13 +301,17 @@ class vulture:
 				n_line['available_date'] = "%s-%s-%s" % (date.year, date.month, date.day)
 		except:
 			pass
-		n_line['floorplan_name'] = n_line['floorplan_name'].strip("\"")
-		n_line['floorplan_name'] += " - %s/%s" % (n_line['bed'], n_line['bath'])
-		n_line['unit_name'] += " - (%s)" % n_line['floorplan_name']
+		if not yardi:
+			n_line['floorplan_name'] = n_line['floorplan_name'].strip("\"")
+			n_line['floorplan_name'] += " - %s/%s" % (n_line['bed'], n_line['bath'])
+			n_line['unit_name'] = n_line['unit_name'].strip("\"")
+			n_line['unit_name'] += " - (%s)" % n_line['floorplan_name']
 		n_line['floorplan_name'] = "\"%s\"" % n_line['floorplan_name']
 		n_line['unit_name'] = "\"%s\"" % n_line['unit_name']
 
+
 		return n_line
+
 
 	def filter_lines(self, line):
 		if line.get('floorplan_name').upper().strip().strip('\"') in unavailable:
@@ -312,7 +320,7 @@ class vulture:
 		try:
 			int(line['property_id'])
 			if line['unit_name'] == None or line['unit_name'] == '': return False
-			if line['floorplan_name'] == None or line['floorplan_name'] == '': return False
+			if line['floorplan_name'].strip("\"") == None or line['floorplan_name'].strip("\"") == '': return False
 			if float(re.sub('[^\d.-]', '', line['price'])) < 350: return False
 			sqft = line['sqft']
 			if not (sqft == '' or sqft == '-'):
@@ -337,7 +345,7 @@ class vulture:
 			return True
 
 	def process(self):
-		output, n_data, e_data = [], [], []
+		output, n_data, e_data, yardi = [], [], [], []
 		for line in self.input:
 			result = self.filter_lines(line)
 			if result:
@@ -347,6 +355,12 @@ class vulture:
 					n_data.append(line)
 				else:
 					e_data.append(line)
+
+		for line in self.o_yardi:
+			result = self.filter_lines(line)
+			if result:
+				output.append(self.normalize(line, True))
+
 		timestamp = self.timestamp()
 
 
@@ -358,11 +372,16 @@ class vulture:
 
 		fps = Set()
 		for i in xrange(len(output) - 1, -1, -1):
-			if output[i]['floorplan_name'] in fps:
+			pid = output[i]['property_id']
+			un = output[i]['unit_name']
+			tester = pid + un
+
+			if tester in fps:
 				del output[i]
 			else:
-				fps.add(output[i]['floorplan_name'])
+				fps.add(tester)
 
+		self.write(yardi, os.path.join(self.output, "%s master_yardi_output.csv" % timestamp))
 		self.write(output, os.path.join(self.output,"%s master_output.csv" % timestamp), True)
 		self.write(n_data, os.path.join(self.output,"%s no_data.csv" % timestamp))
 		self.write(e_data, os.path.join(self.output,"%s data_err.csv" % timestamp))
