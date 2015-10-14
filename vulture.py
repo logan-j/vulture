@@ -30,7 +30,7 @@ class vulture:
 		m2 = os.path.split(os.path.split(self.infile)[0])[1]
 		m3 = os.path.split(os.path.split(os.path.split(self.infile)[0])[0])[0]
 		self.header = re.sub("[a-zA-Z]", "", m2)
-		filename = self.header + " Outputs"
+		filename = self.header.strip(" ") + " Outputs"
 		self.output = os.path.join(m3,  "Output Files/%s/%s" % (filename, m1))
 		if not os.path.exists(self.output):
 			os.makedirs(self.output)
@@ -200,7 +200,8 @@ class vulture:
 					if result:
 						un = line['unit_name']
 						if result.get(un) or un == '':
-							line['floorplan_name'] = result[line['unit_name']]
+							if un != '':
+								line['floorplan_name'] = result[line['unit_name']]
 							self.o_yardi.append(dict(line)) 
 						elif un not in unavailable and un != None and un != '':
 							yardi_err.append(dict(line))
