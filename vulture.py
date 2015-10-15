@@ -101,7 +101,7 @@ class vulture:
 			unit['bb_ave'] = "%0.3f" % ((float(unit['price']) * bedbath[keys[1]][1]) / bedbath[keys[1]][0] - 1.0)
 			unit['bb_ave_actual'] = "%0.3f" % (bedbath[keys[1]][0]/ bedbath[keys[1]][1])
 			unit['pp_sqft'] = 'N/A'
-			if unit['sqft'] != '' and unit['sqft'] != None and unit['sqft'] != '-' and str(unit['sqft']) != '0':
+			if unit['sqft'] != '' and unit['sqft'] != None and unit['sqft'] != '-' and str(unit['sqft']) != '0' and unit['sqft'] != '--':
 				unit['pp_sqft'] = "%0.3f" % (float(unit['price']) / float(unit['sqft']))
 			db = self.database.get(unit['property_id'], {})
 			if db.get(re.sub('\s', '', unit['unit_name'])):
@@ -199,11 +199,12 @@ class vulture:
 					result = self.yardi.get(line['property_id'])
 					if result:
 						un = line['unit_name']
-						if result.get(un) or un == '':
-							if un != '':
-								line['floorplan_name'] = result[line['unit_name']]
-							self.o_yardi.append(dict(line)) 
-						elif un not in unavailable and un != None and un != '':
+						if result.get(un):
+
+							line['floorplan_name'] = result[line['unit_name']]
+							self.o_yardi.append(dict(line))
+
+						elif un not in unavailable and un != None:
 							yardi_err.append(dict(line))
 						else:
 							fp = line['floorplan_name']
@@ -237,7 +238,7 @@ class vulture:
 		if master == False:
 			with open(outfile, 'wb') as w_file:
 				
-				writer = csv.DictWriter(w_file, fieldnames=fieldnames, quotechar='\"', extrasaction='ignore')
+				writer = csv.DictWriter(w_file, fieldnames=fieldnames, quotechar='\"', extrasaction='ignore', quoting=csv.QUOTE_MINIMAL)
 				writer.writeheader()
 				writer.writerows(lines)
 				
@@ -247,7 +248,7 @@ class vulture:
 			propID = ''
 			now = datetime.today()
 			with open(outfile, 'wb') as w_file:
-				writer = csv.DictWriter(w_file, delimiter=',', fieldnames=fieldnames, extrasaction='ignore', quotechar='\"')
+				writer = csv.DictWriter(w_file, fieldnames=fieldnames, extrasaction='ignore', quotechar='\"', quoting=csv.QUOTE_MINIMAL)
 				writer.writeheader()
 				for line in lines:
 					if line.has_key('date_available'):
@@ -274,7 +275,7 @@ class vulture:
 				fieldnames = [	'property_id', 'floorplan_name', 'unit_name', 'sqft', 'bed', 'bath', 'price', 'date_available',
 								'bb_ave', 'db_ave', 'fp_ave', 'pp_sqft', 'bb_ave_actual', 'db_ave_actual', 'fp_ave_actual']
 
-				writer = csv.DictWriter(w_file, fieldnames=fieldnames, quotechar='\"')
+				writer = csv.DictWriter(w_file, fieldnames=fieldnames, quotechar='\"', quoting=csv.QUOTE_MINIMAL)
 				writer.writeheader()
 				writer.writerows(sorted(lines, key=lambda x: int(x['property_id'])))
 
@@ -306,10 +307,9 @@ class vulture:
 			n_line['floorplan_name'] = n_line['floorplan_name'].strip("\"")
 			n_line['floorplan_name'] += " - %s/%s" % (n_line['bed'], n_line['bath'])
 			n_line['unit_name'] = n_line['unit_name'].strip("\"")
-			n_line['unit_name'] += " - (%s)" % n_line['floorplan_name']
-		n_line['floorplan_name'] = "\"%s\"" % n_line['floorplan_name']
-		n_line['unit_name'] = "\"%s\"" % n_line['unit_name']
-
+			n_line['unit_name'] += " -(%s)" % n_line['floorplan_name']
+		n_line['floorplan_name'] = "%s" % n_line['floorplan_name']
+		n_line['unit_name'] = "%s" % n_line['unit_name']
 
 		return n_line
 
@@ -324,7 +324,7 @@ class vulture:
 			if line['floorplan_name'].strip("\"") == None or line['floorplan_name'].strip("\"") == '': return False
 			if float(re.sub('[^\d.-]', '', line['price'])) < 350: return False
 			sqft = line['sqft']
-			if not (sqft == '' or sqft == '-'):
+			if not (sqft == '' or sqft == '-' or sqft == '--'):
 				if int(sqft) == 0: return False
 			float(line['bed'])
 			float(line['bath'])
