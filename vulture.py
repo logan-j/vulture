@@ -204,7 +204,7 @@ class vulture:
 							line['floorplan_name'] = result[line['unit_name']]
 							self.o_yardi.append(dict(line))
 
-						elif un not in unavailable and un != None:
+						elif un != None or not self.filter_lines(dict(line)):
 							yardi_err.append(dict(line))
 						else:
 							fp = line['floorplan_name']
@@ -222,7 +222,7 @@ class vulture:
 					self.input[i][key] = ''
 
 		
-		self.write(self.input, self.output + "/%s master_input.csv" % timestamp)
+		self.write(self.input + self.o_yardi, self.output + "/%s master_input.csv" % timestamp)
 		self.write(yardi_err, self.output + "/%s yardi_err.csv" % timestamp)
 
 
@@ -358,9 +358,9 @@ class vulture:
 					e_data.append(line)
 
 		for line in self.o_yardi:
-			result = self.filter_lines(line)
+			result = self.filter_lines(line) #redundant check
 			if result:
-				output.append(self.normalize(line, True))
+				yardi.append(self.normalize(line, True))
 
 		timestamp = self.timestamp()
 
