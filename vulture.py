@@ -184,7 +184,8 @@ class vulture:
 
 	def masteri(self):
 		infile = self.infile
-		yardi_err = []
+		self.yardi_err = []
+		self.n_yardi = []
 		if infile.endswith("/"): 
 			infile += "*"
 		else: 
@@ -197,6 +198,7 @@ class vulture:
 				i_file.seek(0)
 				for line in csv.DictReader(i_file, dialect=dialect):
 					result = self.yardi.get(line['property_id'])
+					filtered = self.filter_lines(dict(line))
 					if result:
 						un = line['unit_name']
 						if result.get(un):
@@ -204,8 +206,11 @@ class vulture:
 							line['floorplan_name'] = result[line['unit_name']]
 							self.o_yardi.append(dict(line))
 
-						elif un != None or not self.filter_lines(dict(line)):
-							yardi_err.append(dict(line))
+						elif un != None or not filtered:
+							if filtered == None:
+								self.n_yardi.append(dict(line))
+							else:
+								self.yardi_err.append(dict(line))
 						else:
 							fp = line['floorplan_name']
 							if fp != None and fp != '':
@@ -223,7 +228,7 @@ class vulture:
 
 		
 		self.write(self.input + self.o_yardi, self.output + "/%s master_input.csv" % timestamp)
-		self.write(yardi_err, self.output + "/%s yardi_err.csv" % timestamp)
+		#self.write(yardi_err, self.output + "/%s yardi_err.csv" % timestamp)
 
 
 
@@ -357,6 +362,11 @@ class vulture:
 				else:
 					e_data.append(line)
 
+		oya = Set([x['property_id'] for x in self.o_yardi])
+		for i in xrange(len(self.n_yardi) - 1, -1, -1):
+			if self.n_yardi[i]['property_id'] in oya:
+				del self.n_yardi[i]
+
 		for line in self.o_yardi:
 			result = self.filter_lines(line) #redundant check
 			if result:
@@ -382,6 +392,7 @@ class vulture:
 			else:
 				fps.add(tester)
 
+		self.write(self.yardi_err + self.n_yardi, os.path.join(self.output, "%s yardi_err.csv" % timestamp))
 		self.write(yardi, os.path.join(self.output, "%s master_yardi_output.csv" % timestamp))
 		self.write(output, os.path.join(self.output,"%s master_output.csv" % timestamp), True)
 		self.write(n_data, os.path.join(self.output,"%s no_data.csv" % timestamp))
